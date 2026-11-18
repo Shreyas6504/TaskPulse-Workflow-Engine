@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TaskPulse — Distributed Worker Queue & Observability</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0B0F17;
+      --card: #111827;
+      --border: #1F2937;
+      --accent: #3B82F6;
+      --text: #F9FAFB;
+      --muted: #9CA3AF;
+      --success: #10B981;
+      --warning: #F59E0B;
+      --danger: #EF4444;
+      --purple: #8B5CF6;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 1.5rem 2rem;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 1.5rem;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .brand-icon {
+      background: linear-gradient(135deg, #3B82F6, #10B981);
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.3rem;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.2rem;
+    }
+    .card-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+    .card-val {
+      font-size: 2rem;
+      font-weight: 800;
+      margin-top: 0.4rem;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .actions-bar {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+    }
+    .btn {
+      padding: 0.6rem 1.1rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      transition: all 0.2s;
+    }
+    .btn:hover { background: #1F2937; border-color: var(--accent); }
+    .btn-primary { background: var(--accent); color: #fff; border: none; }
+    .btn-primary:hover { background: #2563EB; }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      font-size: 0.88rem;
+    }
+    th, td {
+      padding: 0.85rem 1.1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      background: #0F172A;
+      color: var(--muted);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 0.2rem 0.6rem;
+      border-radius: 20px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .status-SUCCESS { background: rgba(16, 185, 129, 0.15); color: #10B981; }
+    .status-RUNNING { background: rgba(59, 130, 246, 0.15); color: #3B82F6; }
+    .status-PENDING { background: rgba(156, 163, 175, 0.15); color: #9CA3AF; }
+    .status-RETRYING { background: rgba(245, 158, 11, 0.15); color: #F59E0B; }
+    .status-DEAD_LETTER { background: rgba(239, 68, 68, 0.15); color: #EF4444; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="brand-icon">⚡</div>
+      <div>
+        <h2 style="font-size: 1.25rem; font-weight:800;">TaskPulse Engine</h2>
+        <p style="font-size: 0.78rem; color: var(--muted);">Concurrent Worker Queue & Backoff Orchestration</p>
+      </div>
+    </div>
+    <div style="font-size: 0.82rem; color: var(--muted); font-family: 'JetBrains Mono';">
+      Auto-polling: <span style="color: var(--success);">● Active (1s)</span>
+    </div>
+  </header>
+
+  <div class="grid">
+    <div class="card">
+      <div class="card-label">Active Thread Workers</div>
+      <div class="card-val" id="stat-workers" style="color: var(--accent);">-</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Queued Jobs</div>
+      <div class="card-val" id="stat-queued" style="color: var(--warning);">-</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Completed Successfully</div>
+      <div class="card-val" id="stat-success" style="color: var(--success);">-</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Retries Handled</div>
+      <div class="card-val" id="stat-retried" style="color: var(--purple);">-</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Dead-Letter Queue (DLQ)</div>
+      <div class="card-val" id="stat-dlq" style="color: var(--danger);">-</div>
+    </div>
+  </div>
+
+  <div class="actions-bar">
+    <span style="font-size: 0.85rem; font-weight: 700;">Enqueue Test Task:</span>
+    <button class="btn btn-primary" onclick="trigger('payment')">💳 Payment Reconciliation</button>
+    <button class="btn" onclick="trigger('notification')">🔔 Broadcast Email</button>
+    <button class="btn" style="border-color: var(--warning); color: var(--warning);" onclick="trigger('flaky')">⚠️ Trigger Flaky API (Test Exponential Backoff)</button>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Job ID</th>
+        <th>Task Name</th>
+        <th>Priority</th>
+        <th>Status</th>
+        <th>Retries</th>
+        <th>Execution (ms)</th>
+        <th>Result / Error</th>
+      </tr>
+    </thead>
+    <tbody id="jobs-body">
+      <tr><td colspan="7" style="text-align:center; color:var(--muted);">Loading job ledger...</td></tr>
+    </tbody>
+  </table>
+
+  <script>
+    async function loadData() {
+      try {
+        const [statsRes, jobsRes] = await Promise.all([
+          fetch('/api/stats').then(r => r.json()),
+          fetch('/api/jobs').then(r => r.json())
+        ]);
+
+        if (statsRes.success) {
+          const s = statsRes.stats;
+          document.getElementById('stat-workers').textContent = s.active_workers;
+          document.getElementById('stat-queued').textContent = s.queued_jobs;
+          document.getElementById('stat-success').textContent = s.total_success;
+          document.getElementById('stat-retried').textContent = s.total_retried;
+          document.getElementById('stat-dlq').textContent = s.dead_letter_count;
+        }
+
+        if (jobsRes.success) {
+          const tbody = document.getElementById('jobs-body');
+          tbody.innerHTML = jobsRes.jobs.map(j => `
+            <tr>
+              <td style="font-family:'JetBrains Mono'; color:#60A5FA;">#${j.id}</td>
+              <td style="font-weight:600;">${j.name}</td>
+              <td><span style="font-size:0.75rem; font-weight:700;">P${j.priority}</span></td>
+              <td><span class="status-badge status-${j.status}">${j.status}</span></td>
+              <td style="font-family:'JetBrains Mono';">${j.current_retry} / ${j.max_retries}</td>
+              <td style="font-family:'JetBrains Mono';">${j.execution_time_ms} ms</td>
+              <td style="font-size:0.78rem; color:${j.last_error ? '#F87171' : '#94A3B8'};">
+                ${j.last_error || j.result || '-'}
+              </td>
+            </tr>
+          `).join('');
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function trigger(type) {
+      await fetch('/api/jobs/trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type })
+      });
+      loadData();
+    }
+
+    setInterval(loadData, 1200);
+    loadData();
+  </script>
+</body>
+</html>
